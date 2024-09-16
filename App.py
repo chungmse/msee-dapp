@@ -425,7 +425,7 @@ class ShazamCloneApp(QWidget):
             else:
                 # Play the new audio and set the current button
                 self.current_playing_button = button
-                self.media_player.setMedia(QMediaContent(QUrl(mp3_url)))
+                self.media_player.setMedia(QMediaContent(QUrl.fromLocalFile('recordings\\control\\recording_20240915_214449.wav')))
                 self.media_player.play()
                 button.setText("| |")
                 self.is_paused = False
