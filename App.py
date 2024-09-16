@@ -33,8 +33,6 @@ class AudioRecorderThread(QThread):
             audio_data = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1)
             sd.wait()  # Wait for the recording to finish
 
-            # Save the recorded audio to a WAV file
-            self.recorded_audio = "recorded_audio.wav"
             with wave.open(self.recorded_audio, 'wb') as wav_file:
                 wav_file.setnchannels(2)
                 wav_file.setsampwidth(2)
