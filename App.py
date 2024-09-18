@@ -107,25 +107,22 @@ class ShazamCloneApp(QWidget):
         super().__init__()
 
         # Set up the window
-        self.setWindowTitle('Shazam Clone')
+        self.setWindowTitle('Msee')
         self.setGeometry(100, 100, 400, 600)
-
         self.showMaximized()
 
-        # Set up the background color (deep black for OLED)
+        # Set up the background color
         palette = QPalette()
         palette.setColor(QPalette.Window, QColor("#ffffff"))
         self.setPalette(palette)
 
-        # Create a scrollable area for the entire app
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("background-color: #ffffff; border: none;")
+        # Main layout to hold non-scrollable and scrollable sections
+        main_layout_container = QVBoxLayout(self)
 
-        # Main container widget
-        main_widget = QWidget()
-        main_layout = QVBoxLayout(main_widget)
-        main_widget.setStyleSheet("background-color: #ffffff;")
+        # Create the non-scrollable container for the main button
+        self.button_container = QWidget(self)
+        button_layout = QVBoxLayout(self.button_container)
+        button_layout.setAlignment(Qt.AlignCenter)
 
         # Create the main button
         self.record_button = QPushButton("Start Listening", self)
@@ -148,9 +145,54 @@ class ShazamCloneApp(QWidget):
         shadow_effect.setOffset(0, 10)
         shadow_effect.setColor(QColor(0, 0, 0, 150))
         self.record_button.setGraphicsEffect(shadow_effect)
-
         self.record_button.clicked.connect(self.start_listening)
-        main_layout.addWidget(self.record_button, alignment=Qt.AlignCenter)
+
+        # Add the button to the layout
+        button_layout.addWidget(self.record_button, alignment=Qt.AlignCenter)
+
+        # Add the non-scrollable button container to the main layout
+        main_layout_container.addWidget(self.button_container)
+
+        # Scrollable container for song info and extra songs
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("background-color: #ffffff; border: none;")
+        self.scroll_area.hide()
+
+        # Main scrollable widget that will contain song info and extra songs
+        scrollable_widget = QWidget()
+        scrollable_layout = QVBoxLayout(scrollable_widget)
+
+        # Create a top-left container for the X button
+        x_button_container = QWidget(self)
+        x_button_layout = QHBoxLayout(x_button_container)
+        x_button_layout.setContentsMargins(0, 0, 0, 0)  # Remove any margins
+        x_button_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+
+        # Create the X button
+        self.clear_button = QPushButton("✕", self)
+        self.clear_button.setFixedSize(30, 30)  # Set a fixed size for the button
+        self.clear_button.setStyleSheet("""
+            QPushButton {
+                background-color: #E2E2E2;
+                color: #2675b4;
+                border: none;
+                font-size: 18px;
+                font-weight: bold;
+                border-radius: 15px;
+            }
+            QPushButton:hover {
+                background-color: #C0C0C0;
+            }
+        """)
+        self.clear_button.clicked.connect(self.clear_song_info)
+        self.clear_button.hide()
+
+        # Add the X button to the layout
+        x_button_layout.addWidget(self.clear_button)
+
+        # Add the top-left X button layout to the scrollable layout
+        scrollable_layout.addWidget(x_button_container, alignment=Qt.AlignTop | Qt.AlignRight)
 
         # Song info UI setup
         song_info_widget = QWidget(self)
@@ -203,30 +245,34 @@ class ShazamCloneApp(QWidget):
         self.is_paused = True
         self.current_mp3_url = None
 
-        main_layout.addWidget(song_info_widget, alignment=Qt.AlignCenter)
+        # Add song info widget to the scrollable layout
+        scrollable_layout.addWidget(song_info_widget, alignment=Qt.AlignCenter)
 
         # Add clickable label to reveal extra songs (hidden initially)
         self.reveal_link = QLabel('<a href="#">Not the songs you are looking for?</a>', self)
         self.reveal_link.setOpenExternalLinks(False)
         self.reveal_link.setStyleSheet("color: #2675b4;")  # Dimmed gray for link text
-        self.reveal_link.linkActivated.connect(self.toggle_extra_songs)  # Connect click action
+        self.reveal_link.linkActivated.connect(self.toggle_extra_songs)
         self.reveal_link.hide()  # Hide the link at startup
-        main_layout.addWidget(self.reveal_link, alignment=Qt.AlignCenter)
+        scrollable_layout.addWidget(self.reveal_link, alignment=Qt.AlignCenter)
 
         # Extra songs container (hidden initially)
         self.extra_songs_widget = QWidget(self)
         self.extra_songs_layout = QVBoxLayout(self.extra_songs_widget)
         self.extra_songs_widget.setStyleSheet("background-color: #ffffff;")
-        self.extra_songs_widget.hide()  # Hide initially
+        self.extra_songs_widget.hide()
         self.current_playing_button = None
 
-        # Add the extra songs widget to the main layout
-        main_layout.addWidget(self.extra_songs_widget, alignment=Qt.AlignCenter)
+        # Add the extra songs widget to the scrollable layout
+        scrollable_layout.addWidget(self.extra_songs_widget, alignment=Qt.AlignCenter)
 
-        # Set the main widget inside the scroll area
-        scroll_area.setWidget(main_widget)
-        main_layout_container = QVBoxLayout(self)
-        main_layout_container.addWidget(scroll_area)
+        # Set the scrollable widget inside the scroll area
+        self.scroll_area.setWidget(scrollable_widget)
+
+        # Add the scrollable area to the main layout
+        main_layout_container.addWidget(self.scroll_area)
+
+        # Set the layout for the main window
         self.setLayout(main_layout_container)
 
         # Audio-related variables
@@ -276,6 +322,15 @@ class ShazamCloneApp(QWidget):
                 thumbnailM=first_result.get('thumbnailM', self.default_album_image),
                 mp3url=first_result.get('mp3url', '')
             )
+
+            # Hide button container
+            self.button_container.hide()
+
+            # Show scrollable container
+            self.scroll_area.show()
+
+            # Show the clear button
+            self.clear_button.show()
 
             # Update UI with the song metadata
             self.song_title_label.setText(song_metadata.title)
@@ -460,7 +515,10 @@ class ShazamCloneApp(QWidget):
         self.extra_songs_widget.hide()
 
     def clear_song_info(self):
-        """Clears the song info section."""
+        # Hide clear button
+        self.clear_button.hide()
+
+        # Clears the song info section
         self.song_title_label.clear()
         self.album_artist_label.clear()
         self.release_year_label.clear()
@@ -495,9 +553,15 @@ class ShazamCloneApp(QWidget):
                             self.clear_extra_songs(sub_layout)
                     sub_layout.deleteLater()
 
-            # Ensure the extra songs section is hidden
+        # Ensure the extra songs section is hidden
         self.extra_songs_widget.setVisible(False)
         self.reveal_link.hide()
+
+        # Hide scrollable area
+        self.scroll_area.hide()
+
+        # Show button container
+        self.button_container.show()
 
 
 if __name__ == '__main__':

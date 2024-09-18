@@ -14,9 +14,6 @@ SEGMENT_DURATION = 5000  # Duration of each segment in milliseconds
 NUM_SEGMENTS = 5
 WAVE_OUTPUT_DIR = "recordings\\control"
 
-# List of formats for PyAudio
-FORMATS = [pyaudio.paInt16, pyaudio.paInt24, pyaudio.paInt32]
-
 # Create output directory if it doesn't exist
 if not os.path.exists(WAVE_OUTPUT_DIR):
     os.makedirs(WAVE_OUTPUT_DIR)
@@ -30,12 +27,9 @@ def get_filename(prefix="recording"):
 # Initialize PyAudio
 audio = pyaudio.PyAudio()
 
-# Randomly select format for PyAudio
-FORMAT = random.choice(FORMATS)
-
 # Start recording
 print("Recording...")
-stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
+stream = audio.open(format=pyaudio.paInt16, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
 
 frames = []
 
@@ -55,7 +49,6 @@ recording_filename = get_filename()
 file_path = os.path.join(WAVE_OUTPUT_DIR, recording_filename)
 with wave.open(file_path, 'wb') as wf:
     wf.setnchannels(CHANNELS)
-    wf.setsampwidth(audio.get_sample_size(FORMAT))
     wf.setframerate(RATE)
     wf.writeframes(b''.join(frames))
 
