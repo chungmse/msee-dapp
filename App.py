@@ -68,8 +68,6 @@ class ProcessingThread(QThread):
                     # Start polling for results
                     job_id = response_data.get("job_id")
                     token = response_data.get("token")
-                # job_id = "66e7d8f979b0392e44d78e6f"
-                # token = "j6xACjsaLDoC0PIR"
                 self.poll_results(job_id, token)
 
             except Exception as e:
@@ -106,7 +104,6 @@ class ShazamCloneApp(QWidget):
         super().__init__()
 
         # Set up the window
-
         self.setWindowTitle('Shazam Clone')
         self.setGeometry(100, 100, 400, 600)
 
@@ -409,7 +406,7 @@ class ShazamCloneApp(QWidget):
                         self.is_paused = True
                     else:
                         self.media_player.play()
-                        button.setText("| |")
+                        button.setText("⏸")
                         self.is_paused = False
                 else:
                     # Pause the previously playing button
@@ -418,14 +415,14 @@ class ShazamCloneApp(QWidget):
                     self.current_playing_button = button
                     self.media_player.setMedia(QMediaContent(QUrl(mp3_url)))
                     self.media_player.play()
-                    button.setText("| |")
+                    button.setText("⏸")
                     self.is_paused = False
             else:
                 # Play the new audio and set the current button
                 self.current_playing_button = button
-                self.media_player.setMedia(QMediaContent(QUrl.fromLocalFile('recordings\\control\\recording_20240915_214449.wav')))
+                self.media_player.setMedia(QMediaContent(QUrl.fromLocalFile(mp3_url)))
                 self.media_player.play()
-                button.setText("| |")
+                button.setText("⏸")
                 self.is_paused = False
         else:
             # Stop audio if no URL is provided
