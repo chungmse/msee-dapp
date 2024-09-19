@@ -1,18 +1,17 @@
+import os
 import sys
 import time
 import wave
-from datetime import datetime
 from functools import partial
 
 import requests
 import sounddevice as sd
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QBuffer, QIODevice, QUrl, QSize, QPropertyAnimation, QRect, \
-    QEasingCurve, QTimer
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QBuffer, QIODevice, QUrl, QSize, QPropertyAnimation
 from PyQt5.QtGui import QFont, QPalette, QColor, QPixmap, QIcon, QPainter, QPainterPath, QMouseEvent
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
-from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
+from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QGraphicsDropShadowEffect, \
-    QScrollArea, QHBoxLayout, QSpacerItem, QSizePolicy, QGraphicsOpacityEffect, QStackedLayout
+    QScrollArea, QHBoxLayout, QSpacerItem, QGraphicsOpacityEffect, QStackedLayout
 
 from models.SongMetadata import SongMetadata
 from services.SongDataService import SongDataService  # Import the service class
@@ -159,6 +158,13 @@ class ClickableWidget(QWidget):
             self.clicked.emit()  # Emit the clicked signal when the widget is clicked
 
 
+def get_asset_path(relative_path):
+    """Return the absolute path to an asset bundled with the app."""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
+
 class ShazamCloneApp(QWidget):
     def __init__(self):
         super().__init__()
@@ -198,7 +204,7 @@ class ShazamCloneApp(QWidget):
 
         # Create the main button with an icon
         self.record_button = QPushButton(self)
-        self.record_button.setIcon(QIcon("assets/music_note_icon.png"))
+        self.record_button.setIcon(QIcon(get_asset_path("assets/music_note_icon.png")))
         self.record_button.setIconSize(QSize(75, 75))  # Adjust size as needed
         self.record_button.setStyleSheet("""
             QPushButton {
@@ -318,7 +324,7 @@ class ShazamCloneApp(QWidget):
         self.song_info_layout.setContentsMargins(20, 20, 20, 20)
 
         self.song_image_label = CircularImageLabel(self)
-        self.default_album_image = "assets/default_album.jpg"
+        self.default_album_image = get_asset_path("assets/default_album.jpg")
         self.song_image_label.setFixedSize(150, 150)
         self.song_image_label.setPixmap(QPixmap(self.default_album_image))
         self.song_image_label.setAlignment(Qt.AlignCenter)
