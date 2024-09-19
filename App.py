@@ -6,11 +6,13 @@ from functools import partial
 
 import requests
 import sounddevice as sd
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QBuffer, QIODevice, QUrl
-from PyQt5.QtGui import QFont, QPalette, QColor, QPixmap
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QBuffer, QIODevice, QUrl, QSize, QPropertyAnimation, QRect, \
+    QEasingCurve, QTimer
+from PyQt5.QtGui import QFont, QPalette, QColor, QPixmap, QIcon, QPainter, QPainterPath, QMouseEvent
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
+from PyQt5.QtSvg import QSvgWidget, QSvgRenderer
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QGraphicsDropShadowEffect, \
-    QScrollArea, QHBoxLayout
+    QScrollArea, QHBoxLayout, QSpacerItem, QSizePolicy, QGraphicsOpacityEffect, QStackedLayout
 
 from models.SongMetadata import SongMetadata
 from services.SongDataService import SongDataService  # Import the service class
@@ -95,11 +97,66 @@ class ProcessingThread(QThread):
             time.sleep(0.5)
 
 
-def convert_unix_timestamp_to_date(timestamp):
-    try:
-        return datetime.fromtimestamp(timestamp).strftime('%d/%m/%Y')
-    except Exception as e:
-        return 'Unknown'
+class SvgBackgroundWidget(QWidget):
+    def __init__(self, svg_path, parent=None):
+        super().__init__(parent)
+        self.renderer = QSvgRenderer(svg_path, self)
+        self.opacity_effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.opacity_effect)
+        self.opacity_animation = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.opacity_animation.setDuration(300)  # Animation duration in ms
+        self.opacity_animation.setStartValue(0)
+        self.opacity_animation.setEndValue(1)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        self.renderer.render(painter)
+
+    def fade_in(self):
+        self.show()
+        self.opacity_animation.setDirection(QPropertyAnimation.Forward)
+        self.opacity_animation.start()
+
+    def fade_out(self):
+        self.opacity_animation.setDirection(QPropertyAnimation.Backward)
+        self.opacity_animation.start()
+
+
+class CircularImageLabel(QLabel):
+    def __init__(self, parent=None):
+        super(CircularImageLabel, self).__init__(parent)
+        self.setFixedSize(150, 150)  # Set the size of the circle
+
+    def setPixmap(self, pixmap):
+        # Scale the pixmap to fit the label and keep aspect ratio
+        scaled_pixmap = pixmap.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        super(CircularImageLabel, self).setPixmap(scaled_pixmap)
+
+    def paintEvent(self, event):
+        # Paint the circular image
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Create a circular clipping path
+        path = QPainterPath()
+        path.addEllipse(0, 0, self.width(), self.height())
+        painter.setClipPath(path)
+
+        # Draw the pixmap
+        painter.drawPixmap(0, 0, self.pixmap())
+
+
+# Create a ClickableWidget subclass
+class ClickableWidget(QWidget):
+    clicked = pyqtSignal()  # Custom signal
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()  # Emit the clicked signal when the widget is clicked
 
 
 class ShazamCloneApp(QWidget):
@@ -116,28 +173,43 @@ class ShazamCloneApp(QWidget):
         palette.setColor(QPalette.Window, QColor("#ffffff"))
         self.setPalette(palette)
 
+        # Create the layout for stacking widgets
+        stacked_layout = QStackedLayout(self)
+
         # Main layout to hold non-scrollable and scrollable sections
-        main_layout_container = QVBoxLayout(self)
+        main_widget = QWidget(self)
+        main_layout_container = QVBoxLayout(main_widget)
 
         # Create the non-scrollable container for the main button
         self.button_container = QWidget(self)
         button_layout = QVBoxLayout(self.button_container)
         button_layout.setAlignment(Qt.AlignCenter)
 
-        # Create the main button
-        self.record_button = QPushButton("Start Listening", self)
+        # Create a label for the text above the button
+        self.button_text_label = QLabel("Nhấn để Msee...", self)
+        self.button_text_label.setFont(QFont("Arial", 24, QFont.Bold))
+        self.button_text_label.setStyleSheet("color: #2675b4;")
+        self.button_text_label.setAlignment(Qt.AlignCenter)
+        button_layout.addWidget(self.button_text_label, alignment=Qt.AlignCenter)
+
+        # Add a spacer to add space between the text and the button
+        spacer = QSpacerItem(20, 20)
+        button_layout.addItem(spacer)
+
+        # Create the main button with an icon
+        self.record_button = QPushButton(self)
+        self.record_button.setIcon(QIcon("assets/music_note_icon.png"))
+        self.record_button.setIconSize(QSize(75, 75))  # Adjust size as needed
         self.record_button.setStyleSheet("""
             QPushButton {
                 background-color: #2675b4;
                 border-radius: 100px;
-                font-family: Arial;
-                font-size: 24px;
                 height: 200px;
                 width: 200px;
                 color: #E2E2E2;
             }
             QPushButton:hover {
-                background-color: #3A3A3C;
+                background-color: #1a5e9c;
             }
         """)
         shadow_effect = QGraphicsDropShadowEffect()
@@ -146,12 +218,48 @@ class ShazamCloneApp(QWidget):
         shadow_effect.setColor(QColor(0, 0, 0, 150))
         self.record_button.setGraphicsEffect(shadow_effect)
         self.record_button.clicked.connect(self.start_listening)
-
-        # Add the button to the layout
         button_layout.addWidget(self.record_button, alignment=Qt.AlignCenter)
+
+        # Empty space for anim
+        self.empty_space = QWidget(self)
+        self.empty_space.setFixedSize(200, 200)
+        self.empty_space.hide()
+        button_layout.addWidget(self.empty_space, alignment=Qt.AlignCenter)
+
+        # Add a label below the button with normal font
+        self.below_button_label = QLabel("Đang lắng nghe âm nhạc", self)
+        self.below_button_label.setFont(QFont("Arial", 24, QFont.Bold))
+        self.below_button_label.setStyleSheet("color: #2675b4;")
+        self.below_button_label.setAlignment(Qt.AlignCenter)
+        self.below_button_label.hide()
+        button_layout.addWidget(self.below_button_label, alignment=Qt.AlignCenter)
+
+        # Add another label below with thinner font
+        self.thinner_label = QLabel("Cố gắng giữ im lặng để Msee lắng nghe", self)
+        self.thinner_label.setFont(QFont("Arial", 14))
+        self.thinner_label.setStyleSheet("color: #2675b4;")
+        self.thinner_label.setAlignment(Qt.AlignCenter)
+        self.thinner_label.hide()
+        button_layout.addWidget(self.thinner_label, alignment=Qt.AlignCenter)
 
         # Add the non-scrollable button container to the main layout
         main_layout_container.addWidget(self.button_container)
+
+        # Create a sticky header widget
+        self.header_widget = QWidget()
+        self.header_layout = QVBoxLayout(self.header_widget)
+        self.header_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins for the header layout
+        self.header_widget.hide()
+
+        # Create the sticky label
+        self.sticky_label = QLabel("Msee...", self)
+        self.sticky_label.setFont(QFont("Arial", 24, QFont.Bold))
+        self.sticky_label.setStyleSheet("background-color: #ffffff; color: #2675b4; padding: 10px;")
+        self.sticky_label.setAlignment(Qt.AlignCenter)
+        self.header_layout.addWidget(self.sticky_label)
+
+        # Add the header widget to the main layout
+        main_layout_container.addWidget(self.header_widget)
 
         # Scrollable container for song info and extra songs
         self.scroll_area = QScrollArea()
@@ -195,66 +303,95 @@ class ShazamCloneApp(QWidget):
         scrollable_layout.addWidget(x_button_container, alignment=Qt.AlignTop | Qt.AlignRight)
 
         # Song info UI setup
-        song_info_widget = QWidget(self)
-        song_info_layout = QVBoxLayout(song_info_widget)
-        song_info_layout.setSpacing(10)
-        song_info_widget.setStyleSheet("background-color: #ffffff;")
-        song_info_layout.setContentsMargins(0, 20, 0, 0)
+        self.song_info_widget = QWidget(self)
+        self.song_info_layout = QVBoxLayout(self.song_info_widget)
+        self.song_info_layout.setSpacing(10)
+        self.song_info_widget.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(
+                    spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #4d8fc3, stop:1 #a4c7e2
+                );
+                border-radius: 15px;
+            }
+        """)
+        self.song_info_layout.setContentsMargins(20, 20, 20, 20)
 
-        self.song_image_label = QLabel(self)
+        self.song_image_label = CircularImageLabel(self)
         self.default_album_image = "assets/default_album.jpg"
-        self.song_image_label.setPixmap(QPixmap(self.default_album_image).scaled(150, 150, Qt.KeepAspectRatio))
+        self.song_image_label.setFixedSize(150, 150)
+        self.song_image_label.setPixmap(QPixmap(self.default_album_image))
         self.song_image_label.setAlignment(Qt.AlignCenter)
+        self.song_image_label.setStyleSheet("""
+            QLabel {
+                border: 3px solid white;
+                border-radius: 75px;
+            }
+        """)
         self.song_image_label.hide()
-        song_info_layout.addWidget(self.song_image_label, alignment=Qt.AlignCenter)
+        self.song_info_layout.addWidget(self.song_image_label, alignment=Qt.AlignCenter)
 
         self.song_title_label = QLabel("", self)
         self.song_title_label.setFont(QFont("Arial", 24, QFont.Bold))
-        self.song_title_label.setStyleSheet("color: #2675b4;")
+        self.song_title_label.setStyleSheet("color: white; background: none;")
         self.song_title_label.setAlignment(Qt.AlignCenter)
-        song_info_layout.addWidget(self.song_title_label, alignment=Qt.AlignCenter)
+        self.song_info_layout.addWidget(self.song_title_label, alignment=Qt.AlignCenter)
 
         self.album_artist_label = QLabel("", self)
-        self.album_artist_label.setFont(QFont("Arial", 18))
-        self.album_artist_label.setStyleSheet("color: #2675b4;")
+        self.album_artist_label.setFont(QFont("Arial", 16))
+        self.album_artist_label.setStyleSheet("color: white; background: none;")
         self.album_artist_label.setAlignment(Qt.AlignCenter)
-        song_info_layout.addWidget(self.album_artist_label, alignment=Qt.AlignCenter)
+        self.song_info_layout.addWidget(self.album_artist_label, alignment=Qt.AlignCenter)
 
         self.genre_label = QLabel("", self)
         self.genre_label.setFont(QFont("Arial", 14))
-        self.genre_label.setStyleSheet("color: #2675b4;")
+        self.genre_label.setStyleSheet("color: white; background: none;")
         self.genre_label.setAlignment(Qt.AlignCenter)
-        song_info_layout.addWidget(self.genre_label, alignment=Qt.AlignCenter)
-
-        self.release_year_label = QLabel("", self)
-        self.release_year_label.setFont(QFont("Arial", 14))
-        self.release_year_label.setStyleSheet("color: #2675b4;")
-        self.release_year_label.setAlignment(Qt.AlignCenter)
-        song_info_layout.addWidget(self.release_year_label, alignment=Qt.AlignCenter)
+        self.song_info_layout.addWidget(self.genre_label, alignment=Qt.AlignCenter)
 
         self.duration_label = QLabel("", self)
         self.duration_label.setFont(QFont("Arial", 14))
-        self.duration_label.setStyleSheet("color: #2675b4;")
+        self.duration_label.setStyleSheet("color: white; background: none;")
         self.duration_label.setAlignment(Qt.AlignCenter)
-        song_info_layout.addWidget(self.duration_label, alignment=Qt.AlignCenter)
+        self.song_info_layout.addWidget(self.duration_label, alignment=Qt.AlignCenter)
 
-        # Initialize QMediaPlayer
-        self.media_player = QMediaPlayer()
-
-        # Initialize variables to handle audio state
-        self.is_paused = True
-        self.current_mp3_url = None
+        self.release_year_label = QLabel("", self)
+        self.release_year_label.setFont(QFont("Arial", 14))
+        self.release_year_label.setStyleSheet("color: white; background: none;")
+        self.release_year_label.setAlignment(Qt.AlignCenter)
+        self.song_info_layout.addWidget(self.release_year_label, alignment=Qt.AlignCenter)
 
         # Add song info widget to the scrollable layout
-        scrollable_layout.addWidget(song_info_widget, alignment=Qt.AlignCenter)
+        scrollable_layout.addWidget(self.song_info_widget, alignment=Qt.AlignCenter)
 
         # Add clickable label to reveal extra songs (hidden initially)
-        self.reveal_link = QLabel('<a href="#">Not the songs you are looking for?</a>', self)
-        self.reveal_link.setOpenExternalLinks(False)
-        self.reveal_link.setStyleSheet("color: #2675b4;")  # Dimmed gray for link text
-        self.reveal_link.linkActivated.connect(self.toggle_extra_songs)
+        self.reveal_link = QLabel('Không phải bài hát bạn đang tìm kiếm?', self)
+        self.reveal_link.setStyleSheet("""
+            color: #2675b4;
+            text-decoration: underline;
+            font-size: 12px;
+        """)
         self.reveal_link.hide()  # Hide the link at startup
         scrollable_layout.addWidget(self.reveal_link, alignment=Qt.AlignCenter)
+
+        # Button to toggle extra songs (placed below the reveal_link)
+        self.toggle_extra_songs_button = QPushButton("Tìm kiếm các bài hát khác", self)
+        self.toggle_extra_songs_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2675b4;
+                color: white;
+                border: none;
+                font-size: 14px;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #1a5e8a;
+            }
+        """)
+        self.toggle_extra_songs_button.clicked.connect(self.toggle_extra_songs)  # Connect to toggle method
+        self.toggle_extra_songs_button.hide()  # Hide the button at startup
+        scrollable_layout.addWidget(self.toggle_extra_songs_button, alignment=Qt.AlignCenter)
 
         # Extra songs container (hidden initially)
         self.extra_songs_widget = QWidget(self)
@@ -275,6 +412,19 @@ class ShazamCloneApp(QWidget):
         # Set the layout for the main window
         self.setLayout(main_layout_container)
 
+        # Add to stacked layout
+        stacked_layout.addWidget(main_widget)
+
+        # Ensure the pulse container is in the background
+        stacked_layout.setCurrentIndex(1)
+
+        # Initialize QMediaPlayer
+        self.media_player = QMediaPlayer()
+
+        # Initialize variables to handle audio state
+        self.is_paused = True
+        self.current_mp3_url = None
+
         # Audio-related variables
         self.recorded_audio = None
 
@@ -283,7 +433,7 @@ class ShazamCloneApp(QWidget):
         self.processing_thread = None
 
         # Connect signals
-        self.audio_recorder_thread.recording_done.connect(self.update_ui_for_processing)
+        self.audio_recorder_thread.recording_done.connect(self.start_processing)
         self.audio_recorder_thread.error_occurred.connect(self.show_error)
 
     def start_listening(self):
@@ -291,16 +441,18 @@ class ShazamCloneApp(QWidget):
         self.clear_song_info()
 
         # Update UI to show listening state
-        self.record_button.setText("Listening...")
-        self.record_button.setEnabled(False)  # Disable button during recording
+        self.button_text_label.setText("Msee...")
+        self.record_button.hide()
+        self.below_button_label.show()
+        self.thinner_label.show()
 
         # Start the recording thread
         self.audio_recorder_thread.start()
 
-    def update_ui_for_processing(self, audio_file_path):
+    def start_processing(self, audio_file_path):
         # Update UI to show processing state
-        self.record_button.setText("Processing...")
-        self.record_button.setEnabled(False)  # Disable button during processing
+        self.below_button_label.setText("Đang nhận diện bài hát")
+        self.thinner_label.setText("Vui lòng chờ trong giây lát...")
 
         # Start the processing thread
         self.processing_thread = ProcessingThread(audio_file_path)
@@ -325,8 +477,11 @@ class ShazamCloneApp(QWidget):
 
             # Hide button container
             self.button_container.hide()
+            self.empty_space.hide()
+            self.record_button.show()
 
             # Show scrollable container
+            self.header_widget.show()
             self.scroll_area.show()
 
             # Show the clear button
@@ -335,8 +490,9 @@ class ShazamCloneApp(QWidget):
             # Update UI with the song metadata
             self.song_title_label.setText(song_metadata.title)
             self.album_artist_label.setText(f"{song_metadata.artistsNames}")
-            self.release_year_label.setText(f"Release Date: {song_metadata.formatted_release_date()}")
-            self.duration_label.setText(f"Duration: {song_metadata.formatted_duration()}")
+            self.genre_label.setText(f"Thể loại: {song_metadata.category}")
+            self.duration_label.setText(f"Thời lượng: {song_metadata.formatted_duration()}")
+            self.release_year_label.setText(f"Ngày phát hành: {song_metadata.formatted_release_date()}")
 
             # Download and set the album image
             self.set_album_image(song_metadata.thumbnailM)
@@ -348,10 +504,18 @@ class ShazamCloneApp(QWidget):
             # Check if extra songs are available
             if len(response_data.get("list_result", [])) > 1:
                 # Show the reveal link
-                self.reveal_link.setVisible(True)
+                self.reveal_link.show()
+                self.toggle_extra_songs_button.show()
 
                 # Populate the extra songs section
                 list_result = response_data["list_result"]
+
+                # Create the header label for the extra songs section
+                extra_songs_header = QLabel("Tất cả kết quả nhận diện:", self)
+                extra_songs_header.setFont(QFont("Arial", 16, QFont.Bold))
+                extra_songs_header.setStyleSheet("color: #2675b4; padding-bottom: 10px;")
+                extra_songs_header.setAlignment(Qt.AlignLeft)
+                self.extra_songs_layout.addWidget(extra_songs_header)
 
                 # Ensure we only display up to 4 extra songs
                 for i in range(0, 5):
@@ -367,47 +531,82 @@ class ShazamCloneApp(QWidget):
                     )
 
                     # Create a container widget with horizontal layout
-                    container_widget = QWidget(self)
+                    container_widget = ClickableWidget(self)
+                    container_widget.setStyleSheet("""
+                            QWidget {
+                                background-color: #e9f1fc;
+                                border-radius: 15px;
+                            }
+                        """)
                     h_layout = QHBoxLayout(container_widget)
+                    h_layout.setContentsMargins(10, 10, 10, 10)
 
-                    # Update label text
-                    label_text = f"{song.title} - {song.artistsNames}"
-                    song_label = QLabel(label_text, self)
-                    song_label.setFont(QFont("Arial", 16))
-                    song_label.setStyleSheet("color: #2675b4;")  # White text
-                    h_layout.addWidget(song_label)
+                    # Download the image
+                    response = requests.get(song.thumbnailM)
+                    response.raise_for_status()  # Raise an exception for HTTP errors
 
-                    # Add duration label beside each song
+                    # Create a QPixmap from the image data
+                    image_data = QBuffer()
+                    image_data.setData(response.content)
+                    image_data.open(QIODevice.ReadOnly)
+                    pixmap = QPixmap()
+                    pixmap.loadFromData(response.content)
+
+                    # Album image on the left
+                    album_image_label = CircularImageLabel(self)
+                    album_image_label.setPixmap(QPixmap(pixmap))
+                    album_image_label.setFixedSize(80, 80)
+                    album_image_label.setAlignment(Qt.AlignCenter)
+                    album_image_label.setStyleSheet("""
+                            QLabel {
+                                border-radius: 40px;
+                            }
+                        """)
+                    h_layout.addWidget(album_image_label)
+
+                    # Text on the right
+                    text_layout = QVBoxLayout()
+                    text_layout.setContentsMargins(0, 0, 0, 0)
+
+                    title_label = QLabel(song.title, self)
+                    title_label.setFont(QFont("Arial", 16, QFont.Bold))
+                    title_label.setStyleSheet("color: #2675b4; background: transparent;")
+                    text_layout.addWidget(title_label)
+
+                    artist_label = QLabel(song.artistsNames, self)
+                    artist_label.setFont(QFont("Arial", 14))
+                    artist_label.setStyleSheet("color: #6c8fc2; background: transparent;")  # Muted color
+                    text_layout.addWidget(artist_label)
+
                     duration_label = QLabel(song.formatted_duration(), self)
                     duration_label.setFont(QFont("Arial", 14))
-                    duration_label.setStyleSheet("color: #2675b4;")  # Muted gray for duration
-                    h_layout.addWidget(duration_label)
+                    duration_label.setStyleSheet("color: #6c8fc2; background: transparent;")  # Muted color
+                    text_layout.addWidget(duration_label)
+
+                    h_layout.addLayout(text_layout)
 
                     # Add play button beside each song
                     play_button = QPushButton("▶", self)
-                    play_button.setObjectName(f"button{i}")
                     play_button.setFixedSize(40, 40)
                     play_button.setStyleSheet("""\
-                                        QPushButton {
-                                            background-color: #2675b4;
-                                            border-radius: 10px;
-                                            font-family: Arial;
-                                            font-size: 16px;
-                                            height: 40px;
-                                            width: 40px;
-                                            color: #ffffff;
-                                        }
-                                        QPushButton:hover {
-                                            background-color: #3A3A3C;
-                                        }
-                                    """)
-                    play_button.clicked.connect(partial(self.play_audio, song.mp3url, play_button))
+                            QPushButton {
+                                background-color: #2675b4;
+                                border-radius: 20px; /* Half of the height/width */
+                                color: #ffffff;
+                                font-size: 18px;
+                            }
+                            QPushButton:hover {
+                                background-color: #1a5e9c;
+                            }
+                        """)
+                    play_button.hide()
+                    container_widget.clicked.connect(partial(self.play_audio, song.mp3url, play_button))
                     h_layout.addWidget(play_button)
 
                     # Add the container widget to the extra songs layout
                     self.extra_songs_layout.addWidget(container_widget)
 
-                    # Show the extra songs widget
+                # Show the extra songs widget
                 self.extra_songs_widget.setVisible(False)
             else:
                 # Hide the extra songs section and the reveal link if no extra songs are available
@@ -415,18 +614,18 @@ class ShazamCloneApp(QWidget):
                 self.reveal_link.setVisible(False)
 
         else:
-            self.song_title_label.setText("No song found")
+            self.song_title_label.setText("Không tìm thấy bài hát")
             self.album_artist_label.clear()
             self.release_year_label.clear()
             self.duration_label.clear()
 
         # Reset button text to initial state
-        self.record_button.setText("Start Listening")
-        self.record_button.setEnabled(True)
-
-        # Reset button text to initial state
-        self.record_button.setText("Start Listening")
-        self.record_button.setEnabled(True)
+        self.button_text_label.setText("Nhấn để Msee")
+        self.record_button.show()
+        self.below_button_label.setText("Đang lắng nghe âm nhạc")
+        self.below_button_label.hide()
+        self.thinner_label.setText("Cố gắng giữ im lặng để Msee lắng nghe")
+        self.thinner_label.hide()
 
     def play_audio(self, mp3_url=None, button=None):
         if mp3_url is not None:
@@ -436,27 +635,27 @@ class ShazamCloneApp(QWidget):
                         # Toggle play/pause if the same button is pressed
                         if self.is_paused is False:
                             self.media_player.pause()
-                            button.setText("▶")
+                            button.hide()
                             self.is_paused = True
                         else:
                             self.media_player.play()
-                            button.setText("❚❚")
+                            button.show()
                             self.is_paused = False
                     else:
                         # Pause the previously playing button
                         self.media_player.pause()
-                        self.current_playing_button.setText("▶")
+                        self.current_playing_button.hide()
                         self.current_playing_button = button
                         self.media_player.setMedia(QMediaContent(QUrl(mp3_url)))
                         self.media_player.play()
-                        button.setText("❚❚")
+                        button.show()
                         self.is_paused = False
                 else:
                     # Play the new audio and set the current button
                     self.current_playing_button = button
                     self.media_player.setMedia(QMediaContent(QUrl.fromLocalFile(mp3_url)))
                     self.media_player.play()
-                    button.setText("❚❚")
+                    button.show()
                     self.is_paused = False
             else:
                 self.media_player.setMedia(QMediaContent(QUrl.fromLocalFile(mp3_url)))
@@ -466,7 +665,7 @@ class ShazamCloneApp(QWidget):
             # Stop audio if no URL is provided
             self.media_player.stop()
             if self.current_play_button is not None:
-                self.current_play_button.setText("▶")
+                self.current_play_button.hide()
             self.is_paused = True
             self.current_mp3_url = None
             self.current_playing_button = None
@@ -485,7 +684,7 @@ class ShazamCloneApp(QWidget):
             pixmap.loadFromData(response.content)
 
             # Set the pixmap to the label
-            self.song_image_label.setPixmap(pixmap.scaled(150, 150, Qt.KeepAspectRatio))
+            self.song_image_label.setPixmap(pixmap)
             self.song_image_label.show()
 
         except Exception as e:
@@ -500,19 +699,6 @@ class ShazamCloneApp(QWidget):
         else:
             self.extra_songs_widget.show()
             self.reveal_link.hide()  # Hide the reveal link when showing extra songs
-
-    def show_error(self, error_message):
-        # Show error message
-        self.song_title_label.setText(error_message)
-        self.album_artist_label.clear()
-        self.release_year_label.clear()
-
-        # Reset button text to initial state
-        self.record_button.setText("Start Listening")
-        self.record_button.setEnabled(True)  # Re-enable the button
-
-        # Hide extra songs section if it's visible
-        self.extra_songs_widget.hide()
 
     def clear_song_info(self):
         # Hide clear button
@@ -559,9 +745,35 @@ class ShazamCloneApp(QWidget):
 
         # Hide scrollable area
         self.scroll_area.hide()
+        self.header_widget.hide()
 
         # Show button container
         self.button_container.show()
+
+        # Reset button text to initial state
+        self.button_text_label.setText("Nhấn để Msee")
+        self.record_button.show()
+        self.below_button_label.setText("Đang lắng nghe âm nhạc")
+        self.below_button_label.hide()
+        self.thinner_label.setText("Cố gắng giữ im lặng để Msee lắng nghe")
+        self.thinner_label.hide()
+
+    def show_error(self, error_message):
+        # Show error message
+        self.song_title_label.setText(error_message)
+        self.album_artist_label.clear()
+        self.release_year_label.clear()
+
+        # Reset button text to initial state
+        self.button_text_label.setText("Nhấn để Msee")
+        self.record_button.show()
+        self.below_button_label.setText("Đang lắng nghe âm nhạc")
+        self.below_button_label.hide()
+        self.thinner_label.setText("Cố gắng giữ im lặng để Msee lắng nghe")
+        self.thinner_label.hide()
+
+        # Hide extra songs section if it's visible
+        self.extra_songs_widget.hide()
 
 
 if __name__ == '__main__':

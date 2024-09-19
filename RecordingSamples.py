@@ -12,7 +12,7 @@ CHUNK = 1024
 RECORD_SECONDS = 15
 SEGMENT_DURATION = 5000  # Duration of each segment in milliseconds
 NUM_SEGMENTS = 5
-WAVE_OUTPUT_DIR = "recordings\\control"
+WAVE_OUTPUT_DIR = "recordings\\with noises"
 
 # Create output directory if it doesn't exist
 if not os.path.exists(WAVE_OUTPUT_DIR):
@@ -49,6 +49,7 @@ recording_filename = get_filename()
 file_path = os.path.join(WAVE_OUTPUT_DIR, recording_filename)
 with wave.open(file_path, 'wb') as wf:
     wf.setnchannels(CHANNELS)
+    wf.setsampwidth(audio.get_sample_size(pyaudio.paInt16))
     wf.setframerate(RATE)
     wf.writeframes(b''.join(frames))
 
